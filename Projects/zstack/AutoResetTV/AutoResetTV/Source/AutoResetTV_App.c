@@ -1,10 +1,16 @@
 #include "AutoResetTV_App.h"
 
-
 /*registeredRestTVTaskID 用来注册串口TV复位成功标志监控OSAL事件*/
 static uint8 registeredRestTVTaskID;
+uint8 index = 0;
+extern uint8 recStep = 1;//串口接收TV返回指令步骤
+extern uint8 sendCmdCnt = 0;//计数指令发送次数
+char* mathStr = "hop finished and standby";  //(S)shop finished and standby
 
+//函数声明区域
 static void AutoResetTVApp_SendFlagMsg(void);
+static void AutoResetTVApp_MatchShopedStr(uint8 port);//匹配(S)shop finished and standby字符串
+static bool AutoResetTVApp_ReturnCMDConfim( uint8 port );
 
 /***************************************************************************************************
  * @fn      RegisterResetTVFlag
@@ -35,10 +41,82 @@ void AutoResetTVApp_RegisterTaskID( uint8 task_id )
  ***************************************************************************************************/
 void AutoResetTVApp_UartProcessData( uint8 port, uint8 event )
 {
-  uint8  ch;
-  static uint8 index = 0;
-  char* mathStr = "hop finished and standby";  //(S)shop finished and standby
+  
+  switch(recStep)
+  {
+  case 1:  //判断进入工厂模式指令返回  
+    sendCmdCnt++;
+    if( AutoResetTVApp_ReturnCMDConfim(port) ) 
+      recStep = 2;
+    break;
+    
+  case 2 :
+    recStep = 3;
+    break;
+    
+  case 3 : 
+    sendCmdCnt++;
+    AutoResetTVApp_MatchShopedStr(port);
+    break;
+    
+  default :
+    break;
+  }
+}
 
+/***************************************************************************************************
+ * @fn      AutoResetTVApp_ReturnCMDConfim
+ *
+ * @brief   校验TV返回指令是否正确（不带参数返回）
+ *
+ * @param   port     - UART port
+ *          event    - Event that causes the callback
+ *
+ *
+ * @return  None
+ ***************************************************************************************************/
+static bool AutoResetTVApp_ReturnCMDConfim( uint8 port )
+{
+  uint8 ch;
+  bool ret = false;
+  static uint8 i = 0;
+  uint8 check_cmd[] = {0xAB, 0x05, 0x0A, 0xDF, 0x4E};
+  
+  while (Hal_UART_RxBufLen(port))
+  {
+    HalUARTRead (port, &ch, 1);
+    if(ch == check_cmd[i])
+    {
+      i++;
+      if(i == 5)
+      {
+        i = 0;
+        sendCmdCnt = 0;
+        ret = true;
+        break;
+      }
+    }
+    else
+    {
+      i = 0;
+      ret = false;
+      break;
+    }
+  }
+  
+  return ret;  
+}
+
+/***************************************************************************************************
+ * @fn      AutoResetTVApp_MatchShopedStr
+ *
+ * @brief   匹配(S)shop finished and standby字符串
+ *
+ * @return  None
+ ***************************************************************************************************/
+static void AutoResetTVApp_MatchShopedStr( uint8 port )
+{
+  uint8 ch;
   while (Hal_UART_RxBufLen(port))
   {
     HalUARTRead (port, &ch, 1);
@@ -57,6 +135,7 @@ void AutoResetTVApp_UartProcessData( uint8 port, uint8 event )
   }
 }
 
+
 /***************************************************************************************************
  * @fn      AutoResetTVApp_SendFlagMsg
  *
@@ -64,7 +143,7 @@ void AutoResetTVApp_UartProcessData( uint8 port, uint8 event )
  *
  * @return  None
  ***************************************************************************************************/
-void AutoResetTVApp_SendFlagMsg(void)
+static void AutoResetTVApp_SendFlagMsg(void)
 {
   tvResetFlag_t *msgPtr; //TV复位标志消息指针
   

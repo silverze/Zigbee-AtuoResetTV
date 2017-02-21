@@ -121,7 +121,8 @@ endPointDesc_t AutoResetTV_epDesc;
 /*********************************************************************
  * EXTERNAL VARIABLES
  */
-
+extern uint8 recStep;//串口接收TV返回指令步骤
+extern uint8 sendCmdCnt;//计数指令发送次数
 /*********************************************************************
  * EXTERNAL FUNCTIONS
  */
@@ -258,7 +259,7 @@ uint16 AutoResetTV_ProcessEvent( uint8 task_id, uint16 events )
 {
   afIncomingMSGPacket_t *MSGpkt;
   (void)task_id;  // Intentionally unreferenced parameter
-  static uint8 cnt = 0;//定时周期计数
+  //static uint8 cnt = 0;//定时周期计数
 
   if ( events & SYS_EVENT_MSG )
   {
@@ -320,18 +321,26 @@ uint16 AutoResetTV_ProcessEvent( uint8 task_id, uint16 events )
   //  (setup in AutoResetTV_Init()).
   if ( events & AutoResetTV_SEND_PERIODIC_MSG_EVT )
   {
-    //每1秒发送一次指令
-    cnt++;
-    if(cnt % 2 == 0)
-      AutoResetTVApp_UARTSendResetCmd();
-    else
+    /*每条指令最多重复发送三次*/
+    if(recStep == 1 && sendCmdCnt < 3) 
+    {
       AutoResetTVApp_UARTSendEnterFacCmd();
-
-    // Setup to send message again in normal period 
-    osal_start_timerEx( AutoResetTV_TaskID, 
+    }
+    else if(recStep == 2 && sendCmdCnt < 3)
+    {
+      AutoResetTVApp_UARTSendEnterFacCmd(); //先再发一次进工厂，让指令发送步骤加1
+    }
+    else if(recStep == 3 && sendCmdCnt < 3)
+    {
+       AutoResetTVApp_UARTSendResetCmd();
+    }
+    
+    if(recStep <= 3 && sendCmdCnt < 3)
+     osal_start_timerEx( AutoResetTV_TaskID, 
                         AutoResetTV_SEND_PERIODIC_MSG_EVT,
                         AutoResetTV_SEND_PERIODIC_MSG_TIMEOUT );
 
+     
     // return unprocessed events
     return (events ^ AutoResetTV_SEND_PERIODIC_MSG_EVT);
   }
