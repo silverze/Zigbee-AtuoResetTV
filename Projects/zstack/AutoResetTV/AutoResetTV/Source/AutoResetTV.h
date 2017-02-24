@@ -64,7 +64,7 @@ extern "C"
 #define AutoResetTV_FLAGS              0
 
 #define AutoResetTV_MAX_CLUSTERS       2
-#define AutoResetTV_PERIODIC_CLUSTERID          1
+#define AutoResetTV_GET_TVSN_CLUSTERID          1
 #define AutoResetTV_RESET_OK_CLUSTERID          2 //电视机复位成功簇ID
 
 // Send Message Timeout

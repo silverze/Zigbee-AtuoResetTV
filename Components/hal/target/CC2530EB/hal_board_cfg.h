@@ -463,7 +463,7 @@ st( \
 #if (defined ZAPP_P2) || (defined ZTOOL_P2)
 #define HAL_UART_DMA  2
 #else
-#define HAL_UART_DMA  1
+#define HAL_UART_DMA  0 //1 将该宏定义由 1 -> 0 ，则采用ISR的方式使用UART
 #endif
 #else
 #define HAL_UART_DMA  0
@@ -476,7 +476,7 @@ st( \
 #elif (defined ZAPP_P2) || (defined ZTOOL_P2)
 #define HAL_UART_ISR  2
 #else
-#define HAL_UART_ISR  1
+#define HAL_UART_ISR  1 //上述将 HAL_UART_DMA  设置为 0 ，此宏开关起作用
 #endif
 #endif
 

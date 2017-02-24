@@ -127,6 +127,7 @@ typedef uint32  uint24;
 
 #define KEY_CHANGE                0xC0    // Key Events
 #define TV_RESET_FLAG             0xE0    //µçÊÓ»ú¸´Î»±êÖ¾ÊÂ¼ş
+#define GET_TV_SN                 0xE1    //»ñÈ¡µ½µçÊÓ»úÄÚ²¿SN
 
 // OSAL System Message IDs/Events Reserved for applications (user applications)
 // 0xE0 – 0xFC

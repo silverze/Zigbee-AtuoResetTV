@@ -95,7 +95,7 @@
 // This list should be filled with Application specific Cluster IDs.
 const cId_t AutoResetTV_ClusterList[AutoResetTV_MAX_CLUSTERS] =
 {
-  AutoResetTV_PERIODIC_CLUSTERID,
+  AutoResetTV_GET_TVSN_CLUSTERID,
   AutoResetTV_RESET_OK_CLUSTERID
 };
 
@@ -150,6 +150,7 @@ uint8 AutoResetTVFlashCounter = 0;
  */
 void AutoResetTV_MessageMSGCB( afIncomingMSGPacket_t *pckt );
 void AutoResetTV_SendRestOKMessage( void );
+void AutoResetTV_SendTVSNMessage( uint8 *data );
 
 /*********************************************************************
  * NETWORK LAYER CALLBACKS
@@ -259,8 +260,7 @@ uint16 AutoResetTV_ProcessEvent( uint8 task_id, uint16 events )
 {
   afIncomingMSGPacket_t *MSGpkt;
   (void)task_id;  // Intentionally unreferenced parameter
-  //static uint8 cnt = 0;//定时周期计数
-
+  
   if ( events & SYS_EVENT_MSG )
   {
     MSGpkt = (afIncomingMSGPacket_t *)osal_msg_receive( AutoResetTV_TaskID );
@@ -269,41 +269,44 @@ uint16 AutoResetTV_ProcessEvent( uint8 task_id, uint16 events )
       switch ( MSGpkt->hdr.event )
       {
         // Received when a key is pressed
-//        case KEY_CHANGE:
-//        AutoResetTV_HandleKeys( ((keyChange_t *)MSGpkt)->state, ((keyChange_t *)MSGpkt)->keys );
-//        break;
-
+        // case KEY_CHANGE:
+        // AutoResetTV_HandleKeys( ((keyChange_t *)MSGpkt)->state, ((keyChange_t *)MSGpkt)->keys );
+        // break;
+        
         // Received when a messages is received (OTA) for this endpoint
-        case AF_INCOMING_MSG_CMD:
-          AutoResetTV_MessageMSGCB( MSGpkt );
-          break;
-
+      case AF_INCOMING_MSG_CMD:
+        AutoResetTV_MessageMSGCB( MSGpkt );
+        break;
+        
         // Received whenever the device changes state in the network
-        case ZDO_STATE_CHANGE:
-          AutoResetTV_NwkState = (devStates_t)(MSGpkt->hdr.status);
-          
-          //终端设备连接进入ZB网络后，启动定时发送TV复位指令
-          if ( AutoResetTV_NwkState == DEV_END_DEVICE ) 
-          {
-            // Start sending the periodic message in a regular interval.
-            osal_start_timerEx( AutoResetTV_TaskID,
-                                AutoResetTV_SEND_PERIODIC_MSG_EVT,
-                                AutoResetTV_SEND_PERIODIC_MSG_TIMEOUT );
-          }
-          else
-          {
-            // Device is no longer in the network
-          }
-          break;
-         
+      case ZDO_STATE_CHANGE:
+        AutoResetTV_NwkState = (devStates_t)(MSGpkt->hdr.status);
+        
+        //终端设备连接进入ZB网络后，启动定时发送TV复位指令
+        if ( AutoResetTV_NwkState == DEV_END_DEVICE ) 
+        {
+          // Start sending the periodic message in a regular interval.
+          osal_start_timerEx( AutoResetTV_TaskID,
+                             AutoResetTV_SEND_PERIODIC_MSG_EVT,
+                             AutoResetTV_SEND_PERIODIC_MSG_TIMEOUT );
+        }
+        else
+        {
+          // Device is no longer in the network
+        }
+        break;
+        
         //接收到此系统消息，表明电视机复位成功！  
-        case TV_RESET_FLAG:
-          //printf("电视机复位成功！\n");
-              AutoResetTV_SendRestOKMessage();
-          break;
-           
-        default:
-          break;
+      case TV_RESET_FLAG:
+        AutoResetTV_SendRestOKMessage();
+        break;
+        
+      case GET_TV_SN:
+         AutoResetTV_SendTVSNMessage( ((getTVSN_t *)MSGpkt)->tvSN_data );
+        break;
+        
+      default:
+        break;
       }
 
       // Release the memory
@@ -328,7 +331,8 @@ uint16 AutoResetTV_ProcessEvent( uint8 task_id, uint16 events )
     }
     else if(recStep == 2 && sendCmdCnt < 3)
     {
-      AutoResetTVApp_UARTSendEnterFacCmd(); //先再发一次进工厂，让指令发送步骤加1
+     // AutoResetTVApp_UARTSendEnterFacCmd(); //先再发一次进工厂，让指令发送步骤加1
+      AutoResetTVApp_UARTSendGetSNCmd();
     }
     else if(recStep == 3 && sendCmdCnt < 3)
     {
@@ -369,15 +373,15 @@ void AutoResetTV_MessageMSGCB( afIncomingMSGPacket_t *pkt )
 {
   switch ( pkt->clusterId )
   {
-    case AutoResetTV_PERIODIC_CLUSTERID:  
+    case AutoResetTV_GET_TVSN_CLUSTERID:  
 #ifdef CoordinatorEB
-      printf("endsrc:0x%x\t rec:%d\n", pkt->srcAddr.addr.shortAddr, pkt->cmd.Data[0]);
+      printf("endsrc:0x%x\t rec:%s\n", pkt->srcAddr.addr.shortAddr, pkt->cmd.Data);
 #endif
       break;
 
     case AutoResetTV_RESET_OK_CLUSTERID:
 #ifdef CoordinatorEB
-      printf("endsrc:0x%x\t Msg:%s\n", pkt->srcAddr.addr.shortAddr, (pkt->cmd.Data));
+      printf("endsrc:0x%x\t Msg:%s\n", pkt->srcAddr.addr.shortAddr, pkt->cmd.Data);
 #endif     
       break;
   }
@@ -392,7 +396,6 @@ void AutoResetTV_MessageMSGCB( afIncomingMSGPacket_t *pkt )
  */
 void AutoResetTV_SendRestOKMessage( void )
 {
-  //bool buff = true;
   uint8* msg = "TV shop finished!";
 
   if ( AF_DataRequest( &AutoResetTV_Reset_DstAddr, &AutoResetTV_epDesc,
@@ -408,6 +411,23 @@ void AutoResetTV_SendRestOKMessage( void )
   {
     // Error occurred in request to send.
   }
+}
+
+void AutoResetTV_SendTVSNMessage( uint8 *data )
+{
+    if ( AF_DataRequest( &AutoResetTV_Reset_DstAddr, &AutoResetTV_epDesc,
+                         AutoResetTV_GET_TVSN_CLUSTERID,
+                         data[1], //TV带参返回数据包的长度
+                         data,
+                         &AutoResetTV_TransID,
+                         AF_DISCV_ROUTE,
+                         AF_DEFAULT_RADIUS ) == afStatus_SUCCESS )
+    {
+    }
+    else
+    {
+      // Error occurred in request to send.
+    }
 }
 /*********************************************************************
 *********************************************************************/
